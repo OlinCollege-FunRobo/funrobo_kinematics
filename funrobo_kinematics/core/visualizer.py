@@ -610,11 +610,20 @@ class RobotSim:
         self.show_animation = show_animation
         self.plot_limits = [0.65, 0.65, 0.8]
 
+        # ----------------------------
+        # Obstacles (visual only)
+        # ----------------------------
+        self.obstacles = []  # list of dicts describing obstacles
+
+        # Optional: add a couple defaults so you see something immediately
+        self.add_cylinder_obstacle(center=[0.20, 0.10, 0.12], radius=0.04, height=0.24, axis="z", alpha=0.35)
+        self.add_box_obstacle(center=[-0.18, 0.18, 0.08], size=[0.12, 0.10, 0.16], alpha=0.25)
+
         if self.show_animation:
             self.fig = Figure(figsize=(12, 10), dpi=100)
             self.sub1 = self.fig.add_subplot(1,1,1, projection='3d') 
             self.fig.suptitle("Manipulator Kinematics Visualization", fontsize=16)
-
+        
         self.init_plot()
 
     
@@ -769,11 +778,16 @@ class RobotSim:
         self.point_y.clear()
         self.point_z.clear()
 
+        self.draw_obstacles()
+
         EE = self.model.ee
 
         # draw lines to connect the points
         for i in range(len(self.model.points)-1):
-            self.draw_line_3D(self.model.points[i], self.model.points[i+1])
+            self.draw_line_3D(self.model.points[i], self.model.points[i+1], "k-")
+
+        for i in range(len(self.model.points)-1):
+            self.draw_cylinder_3D(self.model.points[i], self.model.points[i+1], radius=0.025, resolution=28, alpha=0.75)
 
         # draw the points
         for i in range(len(self.model.points)):
@@ -823,6 +837,64 @@ class RobotSim:
         self.sub1.set_ylabel('y [m]')
 
 
+    def _to_xyz(self, p):
+        """Convert a point to a (3,) xyz vector. Supports xyz or homogeneous xyzw."""
+        p = np.asarray(p, dtype=float).reshape(-1)
+
+        if p.size == 3:
+            return p
+        if p.size == 4:
+            # Homogeneous coordinate handling
+            w = p[3]
+            if abs(w) > 1e-12:
+                return p[:3] / w
+            return p[:3]  # if w==0, treat as direction-ish; best effort
+        raise ValueError(f"Expected point of length 3 or 4, got shape {p.shape} with size {p.size}: {p}")
+
+
+    def cylinder_between(self, p1, p2, radius=0.015, resolution=24):
+        p1 = self._to_xyz(p1)
+        p2 = self._to_xyz(p2)
+
+        v = p2 - p1
+        L = np.linalg.norm(v)
+        if L < 1e-9:
+            # Degenerate link: return nothing
+            return None
+
+        v_hat = v / L
+
+        # Pick a helper vector not parallel to v_hat
+        a = np.array([0.0, 0.0, 1.0])
+        if abs(np.dot(v_hat, a)) > 0.95:
+            a = np.array([0.0, 1.0, 0.0])
+
+        n1 = np.cross(v_hat, a)
+        n1 /= np.linalg.norm(n1)
+        n2 = np.cross(v_hat, n1)  # already unit length if v_hat, n1 are unit
+
+        theta = np.linspace(0, 2*np.pi, resolution)
+        circle = (np.cos(theta)[:, None] * n1[None, :] +
+                np.sin(theta)[:, None] * n2[None, :]) * radius  # (res,3)
+
+        # Two rings: at p1 and p2
+        ring1 = p1[None, :] + circle
+        ring2 = p2[None, :] + circle
+
+        X = np.vstack([ring1[:, 0], ring2[:, 0]])
+        Y = np.vstack([ring1[:, 1], ring2[:, 1]])
+        Z = np.vstack([ring1[:, 2], ring2[:, 2]])
+        return X, Y, Z
+
+
+    def draw_cylinder_3D(self, p1, p2, radius=0.03, resolution=24, alpha=1.0):
+        mesh = self.cylinder_between(p1, p2, radius=radius, resolution=resolution)
+        if mesh is None:
+            return
+        X, Y, Z = mesh
+        self.sub1.plot_surface(X, Y, Z, alpha=alpha, linewidth=0, antialiased=True)
+
+
     def get_joint_values(self) -> List[float]:
         """
         Return a copy of the model's current joint values.
@@ -831,3 +903,173 @@ class RobotSim:
             list[float]: Joint values (radians internally).
         """
         return self.model.joint_values.copy()
+    
+
+    def clear_obstacles(self) -> None:
+        """Remove all obstacles."""
+        self.obstacles.clear()
+
+    def add_cylinder_obstacle(
+        self,
+        center,
+        radius: float = 0.05,
+        height: float = 0.20,
+        axis: str = "z",
+        resolution: int = 28,
+        alpha: float = 0.35,
+    ) -> None:
+        """
+        Add a visual cylinder obstacle.
+
+        Args:
+            center: [x,y,z] center of the cylinder.
+            radius: meters.
+            height: meters.
+            axis: 'x' | 'y' | 'z' cylinder axis direction.
+            resolution: circumferential mesh resolution.
+            alpha: transparency.
+        """
+        self.obstacles.append({
+            "type": "cylinder",
+            "center": list(center),
+            "radius": float(radius),
+            "height": float(height),
+            "axis": axis.lower(),
+            "resolution": int(resolution),
+            "alpha": float(alpha),
+        })
+
+    def add_box_obstacle(
+        self,
+        center,
+        size=0.12,
+        alpha: float = 0.25,
+    ) -> None:
+        """
+        Add a visual axis-aligned box (cube if size is a float).
+
+        Args:
+            center: [x,y,z] center.
+            size: float (cube edge) or [sx, sy, sz] (box dims), meters.
+            alpha: transparency.
+        """
+        if isinstance(size, (int, float)):
+            sx = sy = sz = float(size)
+        else:
+            sx, sy, sz = [float(s) for s in size]
+
+        self.obstacles.append({
+            "type": "box",
+            "center": list(center),
+            "size": [sx, sy, sz],
+            "alpha": float(alpha),
+        })
+
+
+    def _cylinder_mesh(self, center, radius, height, axis="z", resolution=32):
+        """
+        Returns X,Y,Z for a cylinder surface centered at `center`.
+        Axis-aligned cylinder.
+        """
+        cx, cy, cz = map(float, center)
+        theta = np.linspace(0, 2*np.pi, resolution)
+        z_lin = np.array([-height/2, height/2])  # 2 rings
+
+        # circle in xy
+        x = radius * np.cos(theta)
+        y = radius * np.sin(theta)
+
+        # Build surface for axis = z, then rotate by swapping axes if needed
+        X = np.vstack([x, x]) + cx
+        Y = np.vstack([y, y]) + cy
+        Z = np.vstack([np.full_like(theta, z_lin[0]), np.full_like(theta, z_lin[1])]) + cz
+
+        axis = axis.lower()
+        if axis == "z":
+            return X, Y, Z
+        elif axis == "x":
+            # cylinder along x: swap (X,Z) roles
+            # Z currently varies with height, so map Z -> X; X -> Z
+            return Z, Y, X
+        elif axis == "y":
+            # cylinder along y: map Z -> Y; Y -> Z
+            return X, Z, Y
+        else:
+            raise ValueError("axis must be 'x', 'y', or 'z'")
+
+    def _box_faces(self, center, size):
+        """
+        Create 6 surfaces (faces) for an axis-aligned box.
+        Returns list of (X,Y,Z) each 2x2.
+        """
+        cx, cy, cz = map(float, center)
+        sx, sy, sz = map(float, size)
+        hx, hy, hz = sx/2, sy/2, sz/2
+
+        x0, x1 = cx - hx, cx + hx
+        y0, y1 = cy - hy, cy + hy
+        z0, z1 = cz - hz, cz + hz
+
+        faces = []
+
+        # bottom (z=z0)
+        faces.append((
+            np.array([[x0, x1], [x0, x1]]),
+            np.array([[y0, y0], [y1, y1]]),
+            np.array([[z0, z0], [z0, z0]]),
+        ))
+
+        # top (z=z1)
+        faces.append((
+            np.array([[x0, x1], [x0, x1]]),
+            np.array([[y0, y0], [y1, y1]]),
+            np.array([[z1, z1], [z1, z1]]),
+        ))
+
+        # left (x=x0)
+        faces.append((
+            np.array([[x0, x0], [x0, x0]]),
+            np.array([[y0, y1], [y0, y1]]),
+            np.array([[z0, z0], [z1, z1]]),
+        ))
+
+        # right (x=x1)
+        faces.append((
+            np.array([[x1, x1], [x1, x1]]),
+            np.array([[y0, y1], [y0, y1]]),
+            np.array([[z0, z0], [z1, z1]]),
+        ))
+
+        # front (y=y0)
+        faces.append((
+            np.array([[x0, x1], [x0, x1]]),
+            np.array([[y0, y0], [y0, y0]]),
+            np.array([[z0, z0], [z1, z1]]),
+        ))
+
+        # back (y=y1)
+        faces.append((
+            np.array([[x0, x1], [x0, x1]]),
+            np.array([[y1, y1], [y1, y1]]),
+            np.array([[z0, z0], [z1, z1]]),
+        ))
+
+        return faces
+
+    def draw_obstacles(self) -> None:
+        """
+        Draw all stored obstacles.
+        """
+        for obs in self.obstacles:
+            if obs["type"] == "cylinder":
+                X, Y, Z = self._cylinder_mesh(
+                    obs["center"], obs["radius"], obs["height"],
+                    axis=obs.get("axis", "z"),
+                    resolution=obs.get("resolution", 32),
+                )
+                self.sub1.plot_surface(X, Y, Z, alpha=obs.get("alpha", 0.35), linewidth=0, antialiased=True)
+
+            elif obs["type"] == "box":
+                faces = self._box_faces(obs["center"], obs["size"])
+                for X, Y, Z in faces:
+                    self.sub1.plot_surface(X, Y, Z, alpha=obs.get("alpha", 0.25), linewidth=0, antialiased=True)
