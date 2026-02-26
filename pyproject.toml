@@ -7,7 +7,7 @@ name = "funrobo_kinematics"
 version = "0.1.0"
 description = "Fun robotics kinematics utilities for teaching"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
   "numpy",
   "scipy",
