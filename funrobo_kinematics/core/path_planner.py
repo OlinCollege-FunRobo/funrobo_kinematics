@@ -43,6 +43,38 @@ class RobotPathPlanner():
             goal_biasing_probability=0.1,
             collision_distance_padding=0.0,
         )
+        """
+        Parameters (copied from RRTPlannerOptions)
+        ----------
+            max_step_size : float
+                Maximum joint configuration step size for collision checking along path segments.
+            max_connection_dist : float
+                Maximum angular distance, in radians, for connecting nodes.
+            rrt_connect : bool
+                If true, enables the RRTConnect algorithm, which incrementally extends the most
+                recently sampled node in the tree until an invalid state is reached.
+            bidirectional_rrt : bool
+                If true, uses bidirectional RRTs from both start and goal nodes.
+                Otherwise, only grows a tree from the start node.
+            rrt_star : bool
+                If true, enables the RRT* algorithm to shortcut node connections during planning.
+                This in turn will use the `max_rewire_dist` parameter.
+            max_rewire_dist : float
+                Maximum angular distance, in radians, to consider rewiring nodes for RRT*.
+                If set to `np.inf`, all nodes in the trees will be considered for rewiring.
+            max_planning_time : float
+                Maximum planning time, in seconds.
+            rng_seed : int, optional
+                Sets the seed for random number generation. Use to generate deterministic results.
+            fast_return : bool
+                If True, return as soon as a solution is found. Otherwise continuing building the tree
+                until max_planning_time is reached.
+            goal_biasing_probability : float
+                Probability of sampling the goal configuration itself, which can help planning converge.
+            collision_distance_padding : float
+                The padding, in meters, to use for distance to nearest collision.
+        """
+            
         planner = RRTPlanner(self.model, self.collision_model, options=options)
         
         # Search for a path
@@ -60,43 +92,7 @@ class RobotPathPlanner():
             planner.visualize(self.viz, "ee", show_tree=True)
 
         return self.path
-
-
-    def generate_trajectory(self, path, nsteps=50):
-        """
-        Discretizes a joint space path into a trajectory with position, velocity, and acceleration.
-        """
-        if not path:
-            print("No path found to generate trajectory.")
-            return None
-
-        joint_values = [[th[i] for th in path] for i in range(self.ndof)]
-        
-        # ensure that then number of points is greater than the degree of the spline (default is 3)
-        k = 3 if len(path) > 3 else len(path)-1
-
-        tck,u = interpolate.splprep(joint_values, k=k, s=0)
-        u = np.linspace(0, 1, num=nsteps, endpoint=True)
-
-        self.t = np.linspace(0, 1, nsteps)
-        
-        out = interpolate.splev(u,tck)
-        self.pos_traj = list(zip(*out))
-
-        out = interpolate.splev(u, tck, der=1)
-        self.vel_traj = list(zip(*out))
-
-        # ensure that spline degree is greater than 2 before computing acceleration
-        if k > 2:
-            out = interpolate.splev(u, tck, der=2)
-            self.acc_traj = list(zip(*out))
-        else:
-            self.acc_traj = [[0.0] * self.ndof for _ in range(nsteps)]
-
-        return self.pos_traj
     
-    
-    def plot(self):
         """
         Plot the position, velocity, and acceleration trajectories.
         """
