@@ -192,13 +192,14 @@ class TwoDOFRobotTemplate(BaseRobot):
         """
         super().__init__()
 
-        self.l1 = 0.30  # Length of the first arm segment
-        self.l2 = 0.25  # Length of the second arm segment
+        self.l1 = 0.20  # Length of the first arm segment
+        self.l2 = 0.15  # Length of the second arm segment
 
         self.joint_values = [0.0, 0.0]  # Joint angles (in radians)
         self.joint_limits = [[-math.pi, math.pi], [-math.pi + 0.261, math.pi - 0.261]]  # Joint limits
         self.joint_vel_limits = [[-math.pi, math.pi], [-math.pi, math.pi]]
 
+        self.name = "2-dof"
         self.ee = ut.EndEffector()  # The end-effector object
         self.num_dof = 2  # Number of degrees of freedom
         self.points = [None] * (self.num_dof + 1)  # List to store robot points
@@ -301,6 +302,7 @@ class ScaraRobotTemplate(BaseRobot):
         self.ee = ut.EndEffector()
 
         # Number of degrees of freedom and number of points to store robot configuration
+        self.name = "scara"
         self.num_dof = 3
         self.num_points = 7
         self.points = [None] * self.num_points
@@ -406,6 +408,7 @@ class FiveDOFRobotTemplate(BaseRobot):
             [-np.pi * 2, np.pi * 2],
         ]
         
+        self.name = "hiwonder"
         self.ee = ut.EndEffector()
         self.num_dof = 5
         self.points = [None] * (self.num_dof + 1)
