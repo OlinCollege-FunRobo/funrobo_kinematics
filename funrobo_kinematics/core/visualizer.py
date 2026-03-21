@@ -56,8 +56,9 @@ import yaml
 from pynput import keyboard
 
 from funrobo_kinematics.core.utils import EndEffector, wraptopi
-from funrobo_kinematics.core.trajector_gen import MultiAxisTrajectoryGenerator
+from funrobo_kinematics.core.trajectory_gen import MultiAxisTrajectoryGenerator, MultiSegmentTrajectoryGenerator
 
+from funrobo_kinematics.core.path_planner import RobotPathPlanner
 
 class Visualizer:
     """
@@ -169,21 +170,21 @@ class Visualizer:
         self.fk_entry_title.grid(column=0, row=row_number, columnspan=2, pady=(0, 10))
         row_number += 1
 
-        # Create joint entry fields and labels
-        self.joint_button = []
-        for i in range(self.robot.num_joints):
-            joint_label = ttk.Label(self.control_frame, text=f"theta {i+1} (deg or m):")
-            joint_label.grid(column=0, row=row_number, sticky=tk.W)
-            joint_value = ttk.Entry(self.control_frame)
-            joint_value.insert(0, "0")
-            joint_value.grid(column=1, row=row_number)
-            self.joint_button.append(joint_value)
-            row_number += 1
+        # # Create joint entry fields and labels
+        # self.joint_button = []
+        # for i in range(self.robot.num_joints):
+        #     joint_label = ttk.Label(self.control_frame, text=f"theta {i+1} (deg or m):")
+        #     joint_label.grid(column=0, row=row_number, sticky=tk.W)
+        #     joint_value = ttk.Entry(self.control_frame)
+        #     joint_value.insert(0, "0")
+        #     joint_value.grid(column=1, row=row_number)
+        #     self.joint_button.append(joint_value)
+        #     row_number += 1
 
-        # Create the Move button
-        self.fk_move_button = ttk.Button(self.control_frame, text="Move", command=self.joints_from_button)
-        self.fk_move_button.grid(column=0, row=row_number, columnspan=2, pady=5)
-        row_number += 1
+        # # Create the Move button
+        # self.fk_move_button = ttk.Button(self.control_frame, text="Move", command=self.joints_from_button)
+        # self.fk_move_button.grid(column=0, row=row_number, columnspan=2, pady=5)
+        # row_number += 1
 
         # Create the joint slider field and labels
         self.joint_scales = []
@@ -261,33 +262,77 @@ class Visualizer:
         # ------------------------------------------------------------------------------------------------
         # Velocity kinematics
         # ------------------------------------------------------------------------------------------------
-        self.vk_entry_title = ttk.Label(self.control_frame, text="Velocity Kinematics:", font=("Arial", 13, "bold"))
-        self.vk_entry_title.grid(column=0, row=row_number, columnspan=2, pady=(0, 10))
+        # self.vk_entry_title = ttk.Label(self.control_frame, text="Velocity Kinematics:", font=("Arial", 13, "bold"))
+        # self.vk_entry_title.grid(column=0, row=row_number, columnspan=2, pady=(0, 10))
+        # row_number += 1
+
+        # self.vk_activate_button = ttk.Button(self.control_frame, text="Activate VK", command=self.activate_VK)
+        # self.vk_activate_button.grid(column=0, row=row_number, columnspan=1, pady=2)
+
+        # self.vk_deactivate_button = ttk.Button(self.control_frame, text="Deactivate VK", command=self.deactivate_VK)
+        # self.vk_deactivate_button.grid(column=1, row=row_number, columnspan=1, pady=2)
+        # row_number += 3
+
+        # ------------------------------------------------------------------------------------------------
+        # Path Planning
+        # ------------------------------------------------------------------------------------------------
+        self.mp_entry_title = ttk.Label(self.control_frame, text="Path Planning:", font=("Arial", 13, "bold"))
+        self.mp_entry_title.grid(column=0, row=row_number, columnspan=2, pady=(0, 10))
         row_number += 1
 
-        self.vk_activate_button = ttk.Button(self.control_frame, text="Activate VK", command=self.activate_VK)
-        self.vk_activate_button.grid(column=0, row=row_number, columnspan=1, pady=2)
+        # Create start and goal configuration entry fields and labels
+        init_config = [0] * self.robot.num_joints
+        start_label = ttk.Label(self.control_frame, text=f"Start configuration (deg):")
+        start_label.grid(column=0, row=row_number, sticky=tk.W)
+        start_config_value = ttk.Entry(self.control_frame)
+        start_config_value.insert(0, str(init_config))
+        start_config_value.grid(column=1, row=row_number)
+        self.start_config = start_config_value
+        row_number += 1
 
-        self.vk_deactivate_button = ttk.Button(self.control_frame, text="Deactivate VK", command=self.deactivate_VK)
-        self.vk_deactivate_button.grid(column=1, row=row_number, columnspan=1, pady=2)
-        row_number += 3
+        goal_label = ttk.Label(self.control_frame, text=f"Goal configuration (deg):")
+        goal_label.grid(column=0, row=row_number, sticky=tk.W)
+        goal_config_value = ttk.Entry(self.control_frame)
+        goal_config_value.insert(0, str(init_config))
+        goal_config_value.grid(column=1, row=row_number)
+        self.goal_config = goal_config_value
+        row_number += 1
+
+        self.mp_generate_button = ttk.Button(self.control_frame, text="Generate Path", command=self.generate_path)
+        self.mp_generate_button.grid(column=0, row=row_number, columnspan=1, pady=2)
+
+        self.mp_clear_button = ttk.Button(self.control_frame, text="Clear Path", command=self.clear_path)
+        self.mp_clear_button.grid(column=1, row=row_number, columnspan=1, pady=2)
+
+        self.tg_obstacle_button = ttk.Button(self.control_frame, text="Toggle Obstacles", command=self.toggle_obstacles)
+        self.tg_obstacle_button.grid(column=2, row=row_number, columnspan=1, pady=2)
+        row_number += 1
+
 
         # ------------------------------------------------------------------------------------------------
         # Trajectory generation
         # ------------------------------------------------------------------------------------------------
-        self.tg_entry_title = ttk.Label(self.control_frame, text="Trajectory Generation:", font=("Arial", 13, "bold"))
-        self.tg_entry_title.grid(column=0, row=row_number, columnspan=2, pady=(0, 10))
+        self.mp_entry_title = ttk.Label(self.control_frame, text="Trajectory Generation:", font=("Arial", 13, "bold"))
+        self.mp_entry_title.grid(column=0, row=row_number, columnspan=2, pady=(0, 10))
         row_number += 1
 
-        self.tg_generate_button = ttk.Button(self.control_frame, text="Upload Waypoints", command=self.update_waypoints)
-        self.tg_generate_button.grid(column=0, row=row_number, columnspan=1, pady=2)
-
-        self.tg_follow_task_button = ttk.Button(self.control_frame, text="Generate (Task-space)", command=self.generate_traj_task_space)
-        self.tg_follow_task_button.grid(column=1, row=row_number, columnspan=1, pady=2)
-
-        self.tg_follow_joint_button = ttk.Button(self.control_frame, text="Generate (Joint-space)", command=self.generate_traj_joint_space)
-        self.tg_follow_joint_button.grid(column=2, row=row_number, columnspan=1, pady=2)
+        traj_method_label = ttk.Label(self.control_frame, text=f"Select method (linear, cubic, etc.):")
+        traj_method_label.grid(column=0, row=row_number, sticky=tk.W)
+        traj_method_value = ttk.Entry(self.control_frame)
+        traj_method_value.insert(0, "")
+        traj_method_value.grid(column=1, row=row_number)
         row_number += 1
+
+        self.mp_follow_task_button = ttk.Button(self.control_frame, text="Generate Traj (Task-space)", command=self.generate_traj_task_space)
+        self.mp_follow_task_button.grid(column=0, row=row_number, columnspan=1, pady=2)
+
+        self.mp_follow_joint_button = ttk.Button(self.control_frame, text="Generate Traj (Joint-space)", command=self.generate_traj_joint_space)
+        self.mp_follow_joint_button.grid(column=1, row=row_number, columnspan=1, pady=2)
+        row_number += 1
+
+        # self.mp_follow_joint_button = ttk.Button(self.control_frame, text="Generate Trajectory", command=self.generate_trajectory)
+        # self.mp_follow_joint_button.grid(column=1, row=row_number, columnspan=1, pady=2)
+        # row_number += 1
 
 
     def joints_from_sliders(self, val) -> None:
@@ -312,6 +357,11 @@ class Visualizer:
         """
         joint_values = [0.0] * self.robot.num_joints
         self.robot.reset_ee_trajectory()
+
+        # --- Reset sliders ---
+        for var in self.joint_scales:
+            var.set(0.0)
+
         self.update_FK(joint_values)
 
 
@@ -434,6 +484,79 @@ class Visualizer:
         self.vk_status = False
 
 
+    def clear_path(self) -> None:
+        joint_values = self.robot.get_joint_values()
+        self.robot.reset_ee_trajectory()
+        self.update_FK(joint_values)
+
+    
+    def generate_path(self) -> None:
+        """
+        Generates and visualizes a path between the start and goal configurations using RRT.
+
+        This method reads the start and goal joint configurations from the GUI entries,
+        plans a path using an RRT planner, and visualizes the resulting path on the plot.
+
+        Returns:
+            None. Updates the plot with the planned path.
+        """
+
+        if self.robot.model.name == "2-dof":
+            self.path_planner = RobotPathPlanner(robot_name="2-dof", obstacle_list=self.robot.obstacle_list)
+        elif self.robot.model.name == "hiwonder":
+            self.path_planner = RobotPathPlanner(robot_name="hiwonder", obstacle_list=self.robot.obstacle_list)
+
+
+        q_start = np.deg2rad(eval(self.start_config.get()))
+        q_end = np.deg2rad(eval(self.goal_config.get()))
+        
+        self.path = self.path_planner.plan_path(q_start, q_end, visualize=False)
+
+        if not self.path:
+            tk.messagebox.showerror("Planning Error", "No path found within the time limit.")
+            return
+
+        waypoint_list = []
+        for joint_values in self.path:
+            ee, _ = self.robot.model.calc_forward_kinematics(joint_values, radians=True)
+            waypoint_list.append([ee.x, ee.y, ee.z])
+
+        self.robot.update_waypoints(waypoint_list)
+
+        self.robot.plot_3D()
+        self.canvas.draw()
+      
+    
+    def generate_trajectory(self) -> None:
+        """
+        Discretizes a joint space path into a trajectory with position, velocity, and acceleration.
+
+        This method takes a list of joint configurations (the path) and generates
+        a smooth trajectory by fitting a B-spline. It then computes the position,
+        velocity, and acceleration profiles for each joint.
+
+        Args:
+            path: A list of joint configurations representing the path.
+
+        Returns:
+            None. Updates the trajectory attributes.
+        """
+
+        if not hasattr(self, 'path_planner'):
+            tk.messagebox.showerror("Error", "Please generate a path first!")
+            return
+    
+        self.trajectory = self.path_planner.generate_trajectory(self.path)
+
+        # for joint_values in path:
+        for joint_values in self.trajectory:
+            joint_values_deg = np.rad2deg(joint_values)
+            self.update_FK(joint_values=joint_values_deg, display_traj=True) 
+            time.sleep(0.1)
+        
+        self.path_planner.plot()
+
+
     def update_waypoints(self) -> None:
         """
         Load waypoints from a YAML file and update the robot visualization.
@@ -463,22 +586,29 @@ class Visualizer:
     
         print('\nFollowing trajectory in task space...')
     
-        waypoints = self.robot.get_waypoints()
-        q0 = waypoints[0]
-        qf = waypoints[1]
-
-        traj = MultiAxisTrajectoryGenerator(  
-            method="cubic", mode="task", interval=[0, 1], ndof=len(q0), start_pos=q0, final_pos=qf
-        )
-        traj_dofs = traj.generate(nsteps=50)
-
-        for i in range(50):
-            pos = [dof[0][i] for dof in traj_dofs]
-            ee = EndEffector(*pos, 0, -math.pi/2, wraptopi(math.atan2(pos[1], pos[0]) + math.pi))
-            self.update_IK(ee, soln=0, numerical=True, display_traj=True)
-            time.sleep(0.05)
-
+        if not hasattr(self, 'path_planner'):
+            tk.messagebox.showerror("Error", "Please generate a path first!")
+            return
+        
+        points = []
+        for joint_values in self.path:
+            ee, _ = self.robot.model.calc_forward_kinematics(joint_values, radians=True)
+            points.append([ee.x, ee.y, ee.z])
     
+        mstraj = MultiSegmentTrajectoryGenerator(  
+            method="quintic", mode="task", T=1, ndof=3, waypoints=points, nsteps=10
+        )
+
+        traj_dofs = mstraj.get_joints_by_waypoints()
+
+        for pos in traj_dofs:          
+            ee = EndEffector(*pos, 0, -math.pi/2, wraptopi(math.atan2(pos[1], pos[0]) + math.pi))
+            self.update_IK(ee, soln=0, numerical=False, display_traj=True)
+            time.sleep(0.05)
+        
+        mstraj.plot()
+
+
     def generate_traj_joint_space(self) -> None:
         """
         Generates and visualizes a joint-space trajectory by solving inverse kinematics at waypoints
@@ -487,26 +617,33 @@ class Visualizer:
 
         print('\nFollowing trajectory in joint space...')
         
-        waypoints = self.robot.get_waypoints()
+        if not hasattr(self, 'path_planner'):
+            tk.messagebox.showerror("Error", "Please generate a path first!")
+            return
+    
+        # mstraj = MultiSegmentTrajectoryGenerator(  
+        #     method="quintic", mode="joint", T=1, ndof=len(self.path[0]), waypoints=self.path, nsteps=20
+        # )
 
-        EE_0 = EndEffector(*waypoints[0], 0, 0, 0)
-        EE_f = EndEffector(*waypoints[1], 0, 0, 0)
+        # self.trajectory = mstraj.get_joints_by_waypoints()
 
-        q0 = np.rad2deg(self.robot.model.calc_inverse_kinematics(EE_0))
-        qf = np.rad2deg(self.robot.model.calc_inverse_kinematics(EE_f))
+        self.trajectory = self.path_planner.generate_trajectory(self.path)
 
-        traj = MultiAxisTrajectoryGenerator(  # type: ignore[name-defined]
-            method="quintic", mode="task", interval=[0, 1], ndof=len(q0), start_pos=q0, final_pos=qf
-        )
-        traj_dofs = traj.generate(nsteps=50)
-
-        for i in range(50):
-            joint_values = [dof[0][i] for dof in traj_dofs]            
-            self.update_FK(joint_values=joint_values, display_traj=True) 
-            time.sleep(0.05)
+        # for joint_values in path:
+        for joint_values in self.trajectory:
+            joint_values_deg = np.rad2deg(joint_values)
+            self.update_FK(joint_values=joint_values_deg, display_traj=True) 
+            time.sleep(0.1)
+        
+        self.path_planner.plot()
 
 
+    def toggle_obstacles(self) -> None:
+        self.robot.toggle_obstacles()
+        self.robot.plot_3D()
+        self.canvas.draw()
 
+        
     def check_vk_status(self) -> str:
         """
         Checks and returns the status of the velocity kinematics.
@@ -616,11 +753,8 @@ class RobotSim:
         # ----------------------------
         # Obstacles (visual only)
         # ----------------------------
-        # self.obstacles = []  # list of dicts describing obstacles
+        self.obstacle_list = []  # list of dicts describing obstacles
 
-        # # Optional: add a couple defaults so you see something immediately
-        # self.add_cylinder_obstacle(center=[0.20, 0.10, 0.12], radius=0.04, height=0.24, axis="z", alpha=0.35)
-        # self.add_box_obstacle(center=[-0.18, 0.18, 0.08], size=[0.12, 0.10, 0.16], alpha=0.25)
 
         if self.show_animation:
             self.fig = Figure(figsize=(12, 10), dpi=100)
@@ -662,7 +796,7 @@ class RobotSim:
                 new_joint_values = self.model.calc_inverse_kinematics(pose, curr_joint_values, soln=soln)
                 _, Hlist = self.model.calc_forward_kinematics(new_joint_values, radians=True)
             else:
-                new_joint_values = self.model.calc_numerical_ik(pose, curr_joint_values, tol=0.02, ilimit=50)
+                new_joint_values = self.model.calc_numerical_ik(pose, curr_joint_values)
                 _, Hlist = self.model.calc_forward_kinematics(new_joint_values, radians=True)
             
             self.model.calc_robot_points(new_joint_values, Hlist)
@@ -694,14 +828,15 @@ class RobotSim:
     def plot_ee_trajectory(self):
         xlist, ylist, zlist = [], [], []
 
-        for joint_values in self.joint_trajectory:
-            ee_position = self.model.calc_forward_kinematics(joint_values, radians=True)
-            xlist.append(ee_position[0])
-            ylist.append(ee_position[1])
-            zlist.append(ee_position[2])
+        for joint_values in self.joint_trajectory[1:]:  # skip the initial configuration
+            ee, _ = self.model.calc_forward_kinematics(joint_values, radians=True)
+            xlist.append(ee.x)
+            ylist.append(ee.y)
+            zlist.append(ee.z)
 
         # draw the points
-        self.sub1.plot(xlist, ylist, zlist, 'bo', markersize=2)
+        self.sub1.plot(xlist, ylist, zlist, 'b--')
+        self.sub1.plot(xlist, ylist, zlist, 'ro', markersize=4)
 
 
     def update_ee_trajectory(self):
@@ -710,6 +845,9 @@ class RobotSim:
 
     def reset_ee_trajectory(self):
         self.joint_trajectory.clear()
+        self.waypoint_x.clear()
+        self.waypoint_y.clear()
+        self.waypoint_z.clear()
         
 
     def draw_line_3D(self, p1: List[float], p2: List[float], format_type: str = "k-") -> None:
@@ -761,7 +899,8 @@ class RobotSim:
         Plots the waypoints in the 3D visualization
         """
         # draw the points
-        self.sub1.plot(self.waypoint_x, self.waypoint_y, self.waypoint_z, 'or', markersize=8)
+        self.sub1.plot(self.waypoint_x, self.waypoint_y, self.waypoint_z, 'ob', markersize=6)
+        self.sub1.plot(self.waypoint_x, self.waypoint_y, self.waypoint_z, '--', color='grey', linewidth=1)
 
 
     def update_waypoints(self, waypoints: List[List[float]]) -> None:
@@ -805,7 +944,7 @@ class RobotSim:
         self.point_y.clear()
         self.point_z.clear()
 
-        # self.draw_obstacles()
+        self.draw_obstacles()
 
         EE = self.model.ee
 
@@ -825,6 +964,9 @@ class RobotSim:
 
         # draw the waypoints
         self.plot_waypoints()
+
+        # draw the EE trajectory
+        self.plot_ee_trajectory()
 
         # draw the EE
         self.sub1.plot(EE.x, EE.y, EE.z, 'bo')
@@ -919,7 +1061,7 @@ class RobotSim:
 
     def clear_obstacles(self) -> None:
         """Remove all obstacles."""
-        self.obstacles.clear()
+        self.obstacle_list.clear()
 
 
     def add_cylinder_obstacle(
@@ -942,7 +1084,7 @@ class RobotSim:
             resolution: circumferential mesh resolution.
             alpha: transparency.
         """
-        self.obstacles.append({
+        self.obstacle_list.append({
             "type": "cylinder",
             "center": list(center),
             "radius": float(radius),
@@ -972,7 +1114,7 @@ class RobotSim:
         else:
             sx, sy, sz = [float(s) for s in size]
 
-        self.obstacles.append({
+        self.obstacle_list.append({
             "type": "box",
             "center": list(center),
             "size": [sx, sy, sz],
@@ -1072,13 +1214,25 @@ class RobotSim:
         return faces
 
 
+    def toggle_obstacles(self) -> None:
+        if self.obstacle_list:
+            self.clear_obstacles()
+        else:
+            # self.add_cylinder_obstacle(center=[-0.2, 0.15, 0.2], radius=0.1, height=0.4, axis="z", alpha=0.35)
+            # self.add_box_obstacle(center=[0.2, -0.25, 0.25], size=[0.2, 0.2, 0.5], alpha=0.25)
+            self.add_box_obstacle(center=[0.24, -0.0, 0.1], size=[0.2, 0.2, 0.2], alpha=0.25)
+    
+    
     def draw_obstacles(self) -> None:
         """
         Draw all stored obstacles.
         """
-        for obs in self.obstacles:
+        if not self.obstacle_list:
+            return
+        
+        for obs in self.obstacle_list:
             if obs["type"] == "cylinder":
-                X, Y, Z = self._cylinder_mesh(
+                X, Y, Z = self.cylinder_mesh(
                     obs["center"], obs["radius"], obs["height"],
                     axis=obs.get("axis", "z"),
                     resolution=obs.get("resolution", 32),
@@ -1086,6 +1240,6 @@ class RobotSim:
                 self.sub1.plot_surface(X, Y, Z, alpha=obs.get("alpha", 0.35), linewidth=0, antialiased=True)
 
             elif obs["type"] == "box":
-                faces = self._box_faces(obs["center"], obs["size"])
+                faces = self.box_faces(obs["center"], obs["size"])
                 for X, Y, Z in faces:
                     self.sub1.plot_surface(X, Y, Z, alpha=obs.get("alpha", 0.25), linewidth=0, antialiased=True)
